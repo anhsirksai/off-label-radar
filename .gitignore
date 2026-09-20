@@ -1,0 +1,9 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+radar.db
+radar.db-*
+*.log
+jobs/
+.DS_Store

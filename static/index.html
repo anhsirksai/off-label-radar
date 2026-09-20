@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Off-Label Radar</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="logo">◎</div>
+    <div>
+      <h1>Off-Label Radar</h1>
+      <p class="sub">Every active trial × every FDA label, judged by <b>Jev</b>. Finds approved drugs being tested <b>outside their labeled indications</b> — the CT.gov-vs-DailyMed diff nobody publishes.</p>
+    </div>
+  </div>
+  <p class="how">How to read it: <b>P(off-label)</b> is Jev's probability the trial targets something the label doesn't cover. <b>Plausibility</b> (1–5) is how strong the supplied PubMed evidence is. Click a row to see the label text, the trial, the abstracts, and every probability Jev returned. <span class="muted">Research tool, not medical advice — verify against the current label.</span></p>
+</header>
+
+<section class="panel decisions">
+  <div class="dec"><span class="badge">noul</span><b>off_label</b> — "Is this trial testing the drug outside its approved Indications &amp; Usage?" (label text verbatim + trial) → <b>P(off-label)</b> column; gate at 0.6, below that no evidence is pulled.</div>
+  <div class="dec"><span class="badge">noul</span><b>is_active_arm</b> — "Is the drug the studied intervention, not a comparator / background therapy?" → <b>comparator?</b> flag; multiplies the rank.</div>
+  <div class="dec"><span class="badge">score</span><b>plausibility</b> — 5-level rubric (incidental → RCT evidence) judged on the top-5 PubMed abstracts → <b>Plausibility</b> column (1–5).</div>
+  <div class="dec"><span class="badge">choice</span><b>category</b> — new_indication / label_extension / combination / unclear → <b>Category</b> badge; full distribution in the drawer.</div>
+  <div class="dec"><span class="badge">choice</span><b>condition_match</b> (condition mode) — "Which MeSH term is what the user typed?" over the terms CT.gov returned → shown above the results as <i>you asked X, we searched Y</i>.</div>
+</section>
+
+<details class="panel flow"><summary>Program flow / decision tree — how a drug or condition becomes a ranked candidate</summary>
+  <img src="/static/flow.svg" alt="Off-Label Radar program flow: inputs → RxNorm → DailyMed label → CT.gov trials → Jev gate (noul) → threshold → PubMed → Jev judge (score, choice) → rank">
+</details>
+
+<section class="panel run">
+  <div class="run-left">
+    <div class="tabs"><button class="tab on" data-mode="drugs" type="button">By drug</button><button class="tab" data-mode="condition" type="button">By condition</button></div>
+    <div class="mode-drugs"><label>Seed drugs (comma-separated)</label>
+    <textarea id="drugs" rows="2"></textarea></div>
+    <div class="mode-condition"><label>Medical condition, in plain words</label>
+    <input id="cond" placeholder="e.g. treatment-resistant depression, glioblastoma, alopecia areata">
+    <p class="muted small">Finds the newest active trials for the condition, pulls every drug they test, resolves each to its FDA label, and Jev splits them into <b>label already covers it</b> vs <b>being tested off-label</b>. Hot conditions have thousands of trials — only the newest N are scanned.</p></div>
+    <div class="row">
+      <label>Gate threshold <input id="thr" type="number" min="0" max="1" step="0.05" value="0.6"></label>
+      <label>Max trials <input id="maxt" type="number" min="5" max="200" step="5" value="40"></label>
+      <button id="runBtn" class="primary mode-drugs" type="button">▶ Run pipeline</button>
+      <button id="runCondBtn" class="primary mode-condition" type="button">▶ Find drugs for condition</button>
+      <label class="chk" title="Skip the DB cache and call Jev again for every pair — use this on stage so the counters actually move"><input id="force" type="checkbox"> re-judge with Jev (ignore cache)</label>
+      <button id="csvBtn" title="Download every pair with all Jev answers">⬇ CSV</button>
+      <span id="runMsg" class="muted"></span>
+    </div>
+    <div class="stage"><span id="stage">idle</span> <span id="msg" class="muted"></span></div>
+    <div class="bar"><div id="prog"></div></div>
+    <pre id="log" class="log"></pre>
+  </div>
+  <div class="run-right">
+    <div class="counters">
+      <div class="counter big"><div class="v" id="cPairs">0</div><div class="k">pairs judged</div></div>
+      <div class="counter big"><div class="v" id="cRate">0.0</div><div class="k">decisions / sec</div></div>
+      <div class="counter"><div class="v" id="cCost">0.0¢</div><div class="k">Jev spend this run</div></div>
+      <div class="counter"><div class="v" id="cHours">0.0 h</div><div class="k">analyst-hours equivalent<br><span class="muted">(≈10 min per pair)</span></div></div>
+      <div class="counter"><div class="v" id="cJev">0</div><div class="k">Jev calls <span class="muted" id="cCached"></span></div></div>
+      <div class="counter"><div class="v" id="cTok">0</div><div class="k">input tokens</div></div>
+    </div>
+    <table class="hosts"><thead><tr><th>host</th><th>requests</th><th>ceiling</th></tr></thead><tbody id="hosts"></tbody></table>
+    <div class="muted small" id="dbStats"></div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="filters">
+    <select id="fCond" title="Show all judged pairs, or just the pairs found for one condition search"><option value="">all runs (drug mode)</option></select>
+    <input id="fDrug" placeholder="drug…">
+    <select id="fCat"><option value="">all categories</option><option value="new_indication">new indication</option><option value="label_extension">label extension</option><option value="combination">combination</option><option value="unclear">unclear</option></select>
+    <select id="fPhase"><option value="">any phase</option><option>PHASE3</option><option>PHASE2</option><option>PHASE1</option><option value="NA">N/A</option></select>
+    <select id="fSponsor"><option value="">any sponsor</option><option>INDUSTRY</option><option>OTHER</option><option>NIH</option><option>FED</option><option>NETWORK</option></select>
+    <label>min P(off-label) <input id="fPoff" type="range" min="0" max="1" step="0.05" value="0.6"><span id="fPoffV">0.60</span></label>
+    <label>min plausibility <input id="fPl" type="range" min="1" max="5" step="0.5" value="1"><span id="fPlV">1.0</span></label>
+    <label class="chk"><input id="fCombo" type="checkbox"> show combinations</label>
+    <label class="chk"><input id="fAll" type="checkbox"> show ungated/below-threshold</label>
+    <span class="muted" id="count"></span>
+  </div>
+  <div id="condSummary"></div>
+  <div class="tablewrap">
+  <table class="cands">
+    <thead><tr>
+      <th>#</th><th>Drug</th><th>Trial</th><th>Condition</th><th>Category</th><th>P(off-label)</th><th>Plausibility</th><th>Phase</th><th>Sponsor</th><th>Updated</th><th>Flags</th><th>Rank</th>
+    </tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  </div>
+  <p class="muted small">Known gaps: US labels only (DailyMed); CT.gov omits some non-US registries; "outside approved indications" ≠ "unsafe"; Jev only judges what it is shown — label truncation is logged per row.</p>
+</section>
+
+<aside id="drawer" class="drawer hidden">
+  <div class="drawer-head"><h2 id="dTitle"></h2><button id="dClose">✕</button></div>
+  <div id="dBody"></div>
+</aside>
+<div id="scrim" class="scrim hidden"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
