@@ -23,7 +23,7 @@ SKIP = {"placebo", "saline", "sham", "standard of care", "usual care", "vehicle"
 def clean_name(raw):
     s = re.sub(r"\([^)]*\)", " ", raw or "")
     s = re.split(r"[,;/]|\s\+\s", s, 1)[0]
-    s = re.sub(r"\b\d+(\.\d+)?\s*(mg|mcg|µg|ug|g|ml|mL|%|iu|units?)\b.*$", " ", s, flags=re.I)
+    s = re.sub(r"\b\d+(\.\d+)?\s*(mg|mcg|µg|ug|g|ml|mL|%|iu|units?)(?!\w).*$", " ", s, flags=re.I)
     s = re.sub(r"\b(oral|tablets?|capsules?|injections?|infusions?|solution|iv|intravenous|subcutaneous|topical|cream|gel|patch|"
                r"extended release|er|xr|sr|low dose|high dose|dose|daily|once|twice)\b", " ", s, flags=re.I)
     return re.sub(r"\s+", " ", s).strip(" -.:")
@@ -76,6 +76,8 @@ async def resolve_ingredient(client, raw, st):
     except Exception as e:
         st.note(f"rxnorm resolve '{name[:40]}': {type(e).__name__}")
         return None  # transient: don't cache the miss
+    if result and (result.get("ingredient") or "").lower() in SKIP:  # resolved to a vehicle/placebo ingredient
+        result = {"rxcui": None, "ingredient": result["ingredient"], "multi": 0}
     db.save_intervention_map(low, raw, result)
     return result if result and result.get("rxcui") else None
 
