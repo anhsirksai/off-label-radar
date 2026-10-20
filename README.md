@@ -61,3 +61,5 @@ Built at a hackathon for the *Firehose* track (AI on tasks that used to be too e
 
 ## Demo
 <video src="https://github.com/user-attachments/assets/21158126-f084-4614-88fe-b5cbcd6e148f" width="100%"></video>
+
+https://github.com/anhsirksai/off-label-radar/blob/main/Jev-demo.mp4
